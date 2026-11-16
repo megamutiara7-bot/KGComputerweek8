@@ -11,9 +11,12 @@ export type PaintTool =
   | 'spray'
   | 'bucket'
   | 'eraser'
-  | 'shape';
+  | 'shape'
+  | 'stamp';
 
 export type ShapeType = 'circle' | 'square' | 'triangle' | 'star';
+
+export type StampType = 'sun' | 'flower' | 'heart' | 'rainbow' | 'cloud' | 'butterfly';
 
 export type BrushSizeKey = 'small' | 'medium' | 'large';
 
@@ -59,7 +62,8 @@ export interface LearnLesson {
     | 'brush_large_zone'
     | 'bucket_fill_region'
     | 'erase_smudge'
-    | 'place_shape';
+    | 'place_shape'
+    | 'place_stamp';
   samplePoints: Point[];
 }
 

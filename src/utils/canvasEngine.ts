@@ -1,4 +1,4 @@
-import { Point, ShapeType, TemplateId } from '../types/paint';
+import { Point, ShapeType, StampType, TemplateId } from '../types/paint';
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 520;
@@ -233,6 +233,126 @@ export function drawShape(
   ctx.restore();
 }
 
+export function drawStamp(
+  ctx: CanvasRenderingContext2D,
+  stamp: StampType,
+  cx: number,
+  cy: number,
+  scale = 1
+): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  if (stamp === 'sun') {
+    ctx.strokeStyle = '#F97316';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 28, Math.sin(a) * 28);
+      ctx.lineTo(Math.cos(a) * 40, Math.sin(a) * 40);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#FACC15';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 23, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#1E293B';
+    ctx.beginPath();
+    ctx.arc(-8, -4, 2.5, 0, Math.PI * 2);
+    ctx.arc(8, -4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, 2, 9, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+  } else if (stamp === 'flower') {
+    const petalColors = ['#EC4899', '#F472B6', '#EC4899', '#F472B6', '#EC4899', '#F472B6'];
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 * i) / 6;
+      ctx.fillStyle = petalColors[i];
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * 20, Math.sin(a) * 20, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#FACC15';
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (stamp === 'heart') {
+    ctx.fillStyle = '#EF4444';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 28);
+    ctx.bezierCurveTo(-36, 4, -34, -26, -12, -26);
+    ctx.bezierCurveTo(-2, -26, 0, -16, 0, -12);
+    ctx.bezierCurveTo(0, -16, 2, -26, 12, -26);
+    ctx.bezierCurveTo(34, -26, 36, 4, 0, 28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (stamp === 'rainbow') {
+    const bands = ['#EF4444', '#F97316', '#FACC15', '#22C55E', '#38BDF8'];
+    bands.forEach((col, i) => {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(0, 14, 38 - i * 6, Math.PI, 0);
+      ctx.stroke();
+    });
+  } else if (stamp === 'cloud') {
+    ctx.fillStyle = '#E0F2FE';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(-18, 6, 15, Math.PI * 0.5, Math.PI * 1.7);
+    ctx.arc(0, -6, 19, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.arc(20, 4, 15, Math.PI * 1.3, Math.PI * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (stamp === 'butterfly') {
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#A855F7';
+    ctx.beginPath();
+    ctx.ellipse(-18, -8, 16, 12, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(18, -8, 16, 12, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#38BDF8';
+    ctx.beginPath();
+    ctx.ellipse(-14, 12, 12, 9, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(14, 12, 12, 9, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#1E293B';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 4.5, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function drawStarOutline(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -380,6 +500,19 @@ export function drawLearnLessonCanvas(ctx: CanvasRenderingContext2D, lessonId: s
     ctx.lineWidth = 4;
     ctx.strokeRect(240, 135, 320, 250);
     ctx.restore();
+  } else if (lessonId === 'lesson-stamps') {
+    // Grass hill for cute sticker garden
+    ctx.beginPath();
+    ctx.moveTo(0, 420);
+    ctx.quadraticCurveTo(400, 385, 800, 420);
+    ctx.lineTo(800, 520);
+    ctx.lineTo(0, 520);
+    ctx.closePath();
+    ctx.fillStyle = '#DCFCE7';
+    ctx.fill();
+    ctx.strokeStyle = '#22C55E';
+    ctx.lineWidth = 4;
+    ctx.stroke();
   }
 
   ctx.restore();

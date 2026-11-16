@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Check,
   Download,
+  FlaskConical,
   RotateCcw,
   SkipForward,
   Sparkles,
@@ -13,10 +14,11 @@ import {
 } from 'lucide-react';
 import {
   BRUSH_SIZES,
-  COLOR_MIX_RECIPES,
   GUIDED_MISSIONS,
   LEARN_LESSONS,
+  mixTwoColors,
   PAINT_COLORS,
+  STAMP_LIST,
   TOOL_META,
 } from '../data/curriculum';
 import {
@@ -26,6 +28,7 @@ import {
   PaintTool,
   Point,
   ShapeType,
+  StampType,
   TemplateId,
 } from '../types/paint';
 import {
@@ -34,6 +37,7 @@ import {
   clearCanvasWhite,
   drawLearnLessonCanvas,
   drawShape,
+  drawStamp,
   drawTemplateOnCanvas,
   isPixelCleanWhite,
   isPixelNearColor,
@@ -42,14 +46,19 @@ import {
 } from '../utils/canvasEngine';
 import {
   playBucketSound,
+  playHintSound,
+  playMixSwirlSound,
   playPopSound,
+  playSoftPaintTick,
+  playStampSound,
   playStepSuccessSound,
   playVictoryFanfare,
   speakInstruction,
   stopSpeaking,
 } from '../utils/sound';
+import { BuddyMascot, BuddyMood } from './BuddyMascot';
 import { CelebrationOverlay } from './CelebrationOverlay';
-import { ShapeIcon, ToolIllustration } from './ToolIcons';
+import { ShapeIcon, StampIcon, ToolIllustration } from './ToolIcons';
 
 interface PaintWorkspaceProps {
   mode: Extract<GameMode, 'LEARN_TOOLS' | 'GUIDED_PAINT' | 'FREE_STUDIO'>;
@@ -61,7 +70,19 @@ interface PaintWorkspaceProps {
   onNavigate: (mode: GameMode) => void;
 }
 
-const TOOL_LIST: PaintTool[] = ['pencil', 'brush', 'spray', 'bucket', 'eraser', 'shape'];
+interface OverlayParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  life: number;
+  maxLife: number;
+  kind: 'dot' | 'star';
+}
+
+const TOOL_LIST: PaintTool[] = ['pencil', 'brush', 'spray', 'bucket', 'eraser', 'shape', 'stamp'];
 const SHAPE_LIST: { id: ShapeType; labelId: string; labelEn: string }[] = [
   { id: 'circle', labelId: 'Lingkaran', labelEn: 'Circle' },
   { id: 'square', labelId: 'Kotak', labelEn: 'Square' },
@@ -88,15 +109,30 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<Point | null>(null);
   const shapeStartRef = useRef<Point | null>(null);
+  const shapePreviewEndRef = useRef<Point | null>(null);
+  const particlesRef = useRef<OverlayParticle[]>([]);
+  const rainbowHueRef = useRef<number>(0);
 
   // Studio tools state
   const [activeTool, setActiveTool] = useState<PaintTool>('brush');
   const [activeColorId, setActiveColorId] = useState<string>('red');
-  const [customMixColor, setCustomMixColor] = useState<{ hex: string; nameId: string; nameEn: string } | null>(null);
+  const [isRainbowMode, setIsRainbowMode] = useState<boolean>(false);
+  const [customMixColor, setCustomMixColor] = useState<{
+    hex: string;
+    nameId: string;
+    nameEn: string;
+  } | null>(null);
   const [brushSize, setBrushSize] = useState<BrushSizeKey>('medium');
   const [activeShape, setActiveShape] = useState<ShapeType>('star');
+  const [activeStamp, setActiveStamp] = useState<StampType>('flower');
   const [undoCount, setUndoCount] = useState(0);
+
+  // Interactive 2-pot Color Mixing Bowl state
   const [showColorMixer, setShowColorMixer] = useState(false);
+  const [mixSlotA, setMixSlotA] = useState<string>('red');
+  const [mixSlotB, setMixSlotB] = useState<string>('yellow');
+  const [isStirring, setIsStirring] = useState(false);
+  const [lastMixBanner, setLastMixBanner] = useState<string | null>(null);
 
   // Learn mode state
   const [learnIndex, setLearnIndex] = useState(0);
@@ -109,7 +145,8 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   // Free studio template state
   const [freeTemplate, setFreeTemplate] = useState<TemplateId>('blank');
 
-  // Feedback & Celebration
+  // Buddy mascot, feedback & Celebration
+  const [buddyMood, setBuddyMood] = useState<BuddyMood>('idle');
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<{
     title: string;
@@ -120,8 +157,16 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   } | null>(null);
 
   const activeColorObj = PAINT_COLORS.find((c) => c.id === activeColorId) || PAINT_COLORS[0];
-  const currentHex = customMixColor ? customMixColor.hex : activeColorObj.hex;
-  const currentColorLabel = customMixColor
+  const currentHex = isRainbowMode
+    ? '#EC4899'
+    : customMixColor
+    ? customMixColor.hex
+    : activeColorObj.hex;
+  const currentColorLabel = isRainbowMode
+    ? isId
+      ? 'Warna Pelangi Ajaib'
+      : 'Magic Rainbow'
+    : customMixColor
     ? isId
       ? customMixColor.nameId
       : customMixColor.nameEn
@@ -132,6 +177,57 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   const currentLearnLesson = LEARN_LESSONS[learnIndex];
   const currentMission = GUIDED_MISSIONS[missionIndex];
   const currentMissionStep = currentMission.steps[missionStepIndex];
+
+  const getStrokeHex = useCallback(
+    (advanceRainbow = false): string => {
+      if (isRainbowMode) {
+        if (advanceRainbow) {
+          rainbowHueRef.current = (rainbowHueRef.current + 9) % 360;
+        }
+        return `hsl(${rainbowHueRef.current}, 90%, 54%)`;
+      }
+      return currentHex;
+    },
+    [currentHex, isRainbowMode]
+  );
+
+  const spawnBurst = useCallback(
+    (x: number, y: number, colorList: string[], count = 16, speedScale = 1) => {
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+        const speed = (1.6 + Math.random() * 3.6) * speedScale;
+        particlesRef.current.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 1.2,
+          size: 4 + Math.random() * 4,
+          color: colorList[i % colorList.length],
+          life: 0,
+          maxLife: 28 + Math.floor(Math.random() * 14),
+          kind: i % 3 === 0 ? 'star' : 'dot',
+        });
+      }
+    },
+    []
+  );
+
+  const spawnConfettiShower = useCallback(() => {
+    const confettiColors = ['#EF4444', '#FACC15', '#22C55E', '#38BDF8', '#EC4899', '#9333EA'];
+    for (let i = 0; i < 42; i++) {
+      particlesRef.current.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: -10 - Math.random() * 60,
+        vx: (Math.random() - 0.5) * 2.5,
+        vy: 2.8 + Math.random() * 3.4,
+        size: 5 + Math.random() * 4,
+        color: confettiColors[i % confettiColors.length],
+        life: 0,
+        maxLife: 70 + Math.floor(Math.random() * 25),
+        kind: i % 2 === 0 ? 'star' : 'dot',
+      });
+    }
+  }, []);
 
   const pushUndoSnapshot = useCallback(() => {
     const canvas = mainCanvasRef.current;
@@ -160,74 +256,150 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     }
   }, [soundEnabled]);
 
-  const drawGuideOverlay = useCallback(() => {
-    const overlay = overlayCanvasRef.current;
-    if (!overlay) return;
-    const ctx = overlay.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  // Continuous lightweight animation loop for pulsing target guide, shape drag preview, and particles
+  useEffect(() => {
+    let rafId = 0;
 
-    if (mode === 'LEARN_TOOLS' && currentLearnLesson?.guideTarget) {
-      const { x, y, radius, labelId, labelEn } = currentLearnLesson.guideTarget;
-      ctx.save();
-      ctx.setLineDash([8, 6]);
-      ctx.strokeStyle = 'rgba(37, 99, 235, 0.75)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.stroke();
+    const renderOverlayFrame = (time: number) => {
+      const overlay = overlayCanvasRef.current;
+      if (overlay) {
+        const ctx = overlay.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      ctx.setLineDash([]);
-      ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
-      const label = isId ? labelId : labelEn;
-      const metrics = ctx.measureText(label);
-      const pillW = metrics.width + 20;
-      const pillX = Math.max(12, Math.min(CANVAS_WIDTH - pillW - 12, x - pillW / 2));
-      const pillY = Math.max(12, y - radius - 34);
+          // 1. Pulsing guide target in Learn & Guided modes
+          const pulse = 1 + Math.sin(time * 0.005) * 0.06;
 
-      ctx.fillStyle = '#2563EB';
-      ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, 24, 6);
-      ctx.fill();
+          if (mode === 'LEARN_TOOLS' && currentLearnLesson?.guideTarget) {
+            const { x, y, radius, labelId, labelEn } = currentLearnLesson.guideTarget;
+            ctx.save();
+            ctx.setLineDash([8, 6]);
+            ctx.strokeStyle = 'rgba(37, 99, 235, 0.78)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(x, y, radius * pulse, 0, Math.PI * 2);
+            ctx.stroke();
 
-      ctx.fillStyle = '#FFFFFF';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, pillX + pillW / 2, pillY + 12.5);
-      ctx.restore();
-    } else if (mode === 'GUIDED_PAINT' && currentMissionStep) {
-      const { x, y } = currentMissionStep.guidePoint;
-      const partName = isId ? currentMissionStep.partNameId : currentMissionStep.partNameEn;
-      ctx.save();
-      ctx.setLineDash([6, 5]);
-      ctx.strokeStyle = 'rgba(37, 99, 235, 0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(x, y, 22, 0, Math.PI * 2);
-      ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
+            const label = isId ? labelId : labelEn;
+            const metrics = ctx.measureText(label);
+            const pillW = metrics.width + 20;
+            const pillX = Math.max(12, Math.min(CANVAS_WIDTH - pillW - 12, x - pillW / 2));
+            const pillY = Math.max(12, y - radius - 36);
 
-      ctx.fillStyle = 'rgba(37, 99, 235, 0.14)';
-      ctx.fill();
+            ctx.fillStyle = '#2563EB';
+            ctx.beginPath();
+            ctx.roundRect(pillX, pillY, pillW, 24, 6);
+            ctx.fill();
 
-      ctx.setLineDash([]);
-      ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
-      const metrics = ctx.measureText(partName);
-      const boxW = metrics.width + 18;
-      const boxX = Math.max(10, Math.min(CANVAS_WIDTH - boxW - 10, x - boxW / 2));
-      const boxY = y > 65 ? y - 48 : y + 28;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, pillX + pillW / 2, pillY + 12.5);
+            ctx.restore();
+          } else if (mode === 'GUIDED_PAINT' && currentMissionStep) {
+            const { x, y } = currentMissionStep.guidePoint;
+            const partName = isId ? currentMissionStep.partNameId : currentMissionStep.partNameEn;
+            ctx.save();
+            ctx.setLineDash([6, 5]);
+            ctx.strokeStyle = 'rgba(37, 99, 235, 0.85)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(x, y, 22 * pulse, 0, Math.PI * 2);
+            ctx.stroke();
 
-      ctx.fillStyle = '#0F172A';
-      ctx.beginPath();
-      ctx.roundRect(boxX, boxY, boxW, 24, 6);
-      ctx.fill();
+            ctx.fillStyle = 'rgba(37, 99, 235, 0.14)';
+            ctx.fill();
 
-      ctx.fillStyle = '#FFFFFF';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(partName, boxX + boxW / 2, boxY + 12.5);
-      ctx.restore();
-    }
-  }, [currentLearnLesson, currentMissionStep, isId, mode]);
+            ctx.setLineDash([]);
+            ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
+            const metrics = ctx.measureText(partName);
+            const boxW = metrics.width + 18;
+            const boxX = Math.max(10, Math.min(CANVAS_WIDTH - boxW - 10, x - boxW / 2));
+            const boxY = y > 65 ? y - 48 : y + 28;
+
+            ctx.fillStyle = '#0F172A';
+            ctx.beginPath();
+            ctx.roundRect(boxX, boxY, boxW, 24, 6);
+            ctx.fill();
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(partName, boxX + boxW / 2, boxY + 12.5);
+            ctx.restore();
+          }
+
+          // 2. Live shape drag preview
+          if (shapeStartRef.current && shapePreviewEndRef.current && activeTool === 'shape') {
+            ctx.save();
+            ctx.globalAlpha = 0.72;
+            drawShape(
+              ctx,
+              activeShape,
+              shapeStartRef.current,
+              shapePreviewEndRef.current,
+              currentHex,
+              3
+            );
+            ctx.restore();
+          }
+
+          // 3. Tactile particles & confetti
+          if (particlesRef.current.length > 0) {
+            const remaining: OverlayParticle[] = [];
+            for (const p of particlesRef.current) {
+              p.x += p.vx;
+              p.y += p.vy;
+              p.vy += 0.12;
+              p.life += 1;
+              if (p.life < p.maxLife) {
+                const alpha = Math.max(0, 1 - p.life / p.maxLife);
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                if (p.kind === 'star') {
+                  const spikes = 5;
+                  const outer = p.size * 1.15;
+                  const inner = outer * 0.45;
+                  for (let i = 0; i < spikes * 2; i++) {
+                    const ang = (Math.PI / spikes) * i - Math.PI / 2;
+                    const r = i % 2 === 0 ? outer : inner;
+                    const sx = p.x + Math.cos(ang) * r;
+                    const sy = p.y + Math.sin(ang) * r;
+                    if (i === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                  }
+                  ctx.closePath();
+                } else {
+                  ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                }
+                ctx.fill();
+                ctx.restore();
+                remaining.push(p);
+              }
+            }
+            particlesRef.current = remaining;
+          }
+        }
+      }
+
+      rafId = requestAnimationFrame(renderOverlayFrame);
+    };
+
+    rafId = requestAnimationFrame(renderOverlayFrame);
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    activeShape,
+    activeTool,
+    currentHex,
+    currentLearnLesson,
+    currentMissionStep,
+    isId,
+    mode,
+  ]);
 
   const resetCanvasForCurrentState = useCallback(() => {
     const canvas = mainCanvasRef.current;
@@ -238,6 +410,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     undoStackRef.current = [];
     setUndoCount(0);
     setFeedbackMsg(null);
+    setBuddyMood('idle');
 
     if (mode === 'LEARN_TOOLS') {
       drawLearnLessonCanvas(ctx, currentLearnLesson.id);
@@ -246,35 +419,29 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     } else {
       drawTemplateOnCanvas(ctx, freeTemplate);
     }
-    drawGuideOverlay();
-  }, [currentLearnLesson.id, currentMission.id, drawGuideOverlay, freeTemplate, mode]);
+  }, [currentLearnLesson.id, currentMission.id, freeTemplate, mode]);
 
-  // Initialize / reset canvas whenever mode, lesson, mission, or template changes
   useEffect(() => {
     resetCanvasForCurrentState();
   }, [resetCanvasForCurrentState]);
 
-  // Set helpful defaults when entering Learn Tools lessons or Guided Paint
   useEffect(() => {
     if (mode === 'LEARN_TOOLS') {
-      // Let kids practice choosing the right tool/color, except step 1 defaults to brush
       if (currentLearnLesson.id === 'lesson-color-palette') {
         setActiveTool('brush');
         setActiveColorId('blue');
+        setIsRainbowMode(false);
       }
       setFeedbackMsg(null);
+      setBuddyMood('idle');
     } else if (mode === 'GUIDED_PAINT') {
       setActiveTool('bucket');
+      setIsRainbowMode(false);
       setFeedbackMsg(null);
+      setBuddyMood('idle');
     }
   }, [mode, learnIndex, currentLearnLesson.id]);
 
-  // Re-draw overlay guides on language change
-  useEffect(() => {
-    drawGuideOverlay();
-  }, [drawGuideOverlay]);
-
-  // Clean up speech on unmount
   useEffect(() => {
     return () => {
       stopSpeaking();
@@ -289,12 +456,15 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
       return isId ? currentMissionStep.instructionId : currentMissionStep.instructionEn;
     }
     return isId
-      ? 'Pilih alat dan warna favoritmu lalu gambar sesuka hati!'
-      : 'Pick your favorite tools and colors to create your own artwork!';
+      ? 'Pilih alat, stiker, atau warna pelangi lalu gambar sesuka hati!'
+      : 'Pick tools, stickers, or rainbow paint and create your masterpiece!';
   })();
 
   const handleSpeakCurrent = () => {
+    setBuddyMood('happy');
+    playPopSound(soundEnabled);
     speakInstruction(currentPromptText, language, true);
+    setTimeout(() => setBuddyMood('idle'), 900);
   };
 
   const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
@@ -309,7 +479,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   const paintSprayAt = (ctx: CanvasRenderingContext2D, pt: Point) => {
     const radius = BRUSH_SIZES[brushSize].px * 1.15;
     ctx.save();
-    ctx.fillStyle = currentHex;
+    ctx.fillStyle = getStrokeHex(true);
     for (let i = 0; i < 18; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * radius;
@@ -323,169 +493,204 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     ctx.restore();
   };
 
-  const verifyCurrentProgress = useCallback(() => {
-    const canvas = mainCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
+  const verifyCurrentProgress = useCallback(
+    (actionPoint?: Point) => {
+      const canvas = mainCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
 
-    if (mode === 'LEARN_TOOLS') {
-      const lesson = currentLearnLesson;
+      if (mode === 'LEARN_TOOLS') {
+        const lesson = currentLearnLesson;
 
-      // Check tool/color guidance first
-      if (lesson.requiredTool && activeTool !== lesson.requiredTool) {
-        const toolName = isId
-          ? TOOL_META[lesson.requiredTool].labelId
-          : TOOL_META[lesson.requiredTool].labelEn;
-        setFeedbackMsg(
-          isId
-            ? `Coba pilih alat ${toolName} di sebelah kiri dulu ya!`
-            : `Try selecting the ${toolName} tool on the left first!`
-        );
-        return;
-      }
-
-      if (lesson.requiredBrushSize && brushSize !== lesson.requiredBrushSize) {
-        const sizeLabel = isId
-          ? BRUSH_SIZES[lesson.requiredBrushSize].labelId
-          : BRUSH_SIZES[lesson.requiredBrushSize].labelEn;
-        setFeedbackMsg(
-          isId
-            ? `Pilih ukuran kuas ${sizeLabel} (titik terbesar) di panel kiri!`
-            : `Pick the ${sizeLabel} brush size dot on the left!`
-        );
-        return;
-      }
-
-      if (lesson.requiredColorId && activeColorId !== lesson.requiredColorId) {
-        const targetSwatch = PAINT_COLORS.find((c) => c.id === lesson.requiredColorId);
-        const colorName = targetSwatch
-          ? isId
-            ? targetSwatch.nameId
-            : targetSwatch.nameEn
-          : '';
-        setFeedbackMsg(
-          isId
-            ? `Pilih warna ${colorName} di palet bawah dulu ya!`
-            : `Pick the ${colorName} color from the palette below!`
-        );
-        return;
-      }
-
-      let passed = false;
-
-      if (lesson.verifyType === 'paint_target_zone') {
-        const hits = lesson.samplePoints.filter((pt) =>
-          isPixelNearColor(ctx, pt.x, pt.y, '#EF4444', 85)
-        ).length;
-        passed = hits >= 2;
-      } else if (lesson.verifyType === 'trace_path') {
-        const hits = lesson.samplePoints.filter((pt) => isPixelNotWhite(ctx, pt.x, pt.y)).length;
-        passed = hits >= 2;
-      } else if (lesson.verifyType === 'brush_large_zone') {
-        const hits = lesson.samplePoints.filter((pt) =>
-          isPixelNearColor(ctx, pt.x, pt.y, '#2563EB', 85)
-        ).length;
-        passed = hits >= 2;
-      } else if (lesson.verifyType === 'bucket_fill_region') {
-        const hits = lesson.samplePoints.filter((pt) =>
-          isPixelNearColor(ctx, pt.x, pt.y, '#FACC15', 85)
-        ).length;
-        passed = hits >= 2;
-      } else if (lesson.verifyType === 'erase_smudge') {
-        passed = lesson.samplePoints.every((pt) => isPixelCleanWhite(ctx, pt.x, pt.y));
-      } else if (lesson.verifyType === 'place_shape') {
-        passed = true;
-      }
-
-      if (passed) {
-        setFeedbackMsg(null);
-        if (!completedLearnIds.includes(lesson.id)) {
-          setCompletedLearnIds((prev) => [...prev, lesson.id]);
-          onEarnStars(1);
-        }
-
-        if (learnIndex < LEARN_LESSONS.length - 1) {
-          playStepSuccessSound(soundEnabled);
-          const successText = isId ? 'Hebat! Langkah selesai!' : 'Great job! Step complete!';
-          setFeedbackMsg(successText);
-          setTimeout(() => {
-            setLearnIndex((idx) => Math.min(LEARN_LESSONS.length - 1, idx + 1));
-          }, 850);
-        } else {
-          playVictoryFanfare(soundEnabled);
-          setCelebration({
-            title: isId ? 'Pintar! Semua Alat Dikuasai!' : 'Awesome! All Tools Mastered!',
-            subtitle: isId
-              ? 'Kamu sudah bisa memilih warna, memakai Pensil, Kuas, Ember Cat, Penghapus, dan Bentuk!'
-              : 'You learned how to use Color Tools, Pencil, Brush, Fill Bucket, Eraser, and Shapes!',
-            stars: LEARN_LESSONS.length,
-            maxStars: LEARN_LESSONS.length,
-            previewUrl: canvas.toDataURL('image/png'),
-          });
-        }
-      }
-    } else if (mode === 'GUIDED_PAINT') {
-      const step = currentMissionStep;
-      const targetSwatch = PAINT_COLORS.find((c) => c.id === step.targetColorId);
-      if (!targetSwatch) return;
-
-      const allColored = step.samplePoints.every((pt) =>
-        isPixelNearColor(ctx, pt.x, pt.y, targetSwatch.hex, 90)
-      );
-
-      if (allColored) {
-        setFeedbackMsg(null);
-        if (missionStepIndex < currentMission.steps.length - 1) {
-          playStepSuccessSound(soundEnabled);
-          setFeedbackMsg(isId ? 'Bagus sekali! Lanjut bagian berikutnya...' : 'Nice! Moving to next part...');
-          setTimeout(() => {
-            setMissionStepIndex((idx) => Math.min(currentMission.steps.length - 1, idx + 1));
-          }, 700);
-        } else {
-          playVictoryFanfare(soundEnabled);
-          onEarnStars(3);
-          setCelebration({
-            title: isId
-              ? `Karya "${currentMission.titleId}" Selesai!`
-              : `"${currentMission.titleEn}" Complete!`,
-            subtitle: isId
-              ? 'Warna-warnanya rapi dan cerah sekali!'
-              : 'Your picture looks bright and wonderful!',
-            stars: 3,
-            maxStars: 3,
-            previewUrl: canvas.toDataURL('image/png'),
-          });
-        }
-      } else {
-        // Gentle hint if they colored the target area with a different color
-        const anyNonWhite = step.samplePoints.some((pt) => isPixelNotWhite(ctx, pt.x, pt.y));
-        if (anyNonWhite && activeColorId !== step.targetColorId) {
-          const colorName = isId ? targetSwatch.nameId : targetSwatch.nameEn;
-          const partName = isId ? step.partNameId : step.partNameEn;
+        if (lesson.requiredTool && activeTool !== lesson.requiredTool) {
+          const toolName = isId
+            ? TOOL_META[lesson.requiredTool].labelId
+            : TOOL_META[lesson.requiredTool].labelEn;
+          setBuddyMood('hint');
+          playHintSound(soundEnabled);
           setFeedbackMsg(
             isId
-              ? `Untuk ${partName}, coba pakai warna ${colorName} ya!`
-              : `For ${partName}, try using ${colorName}!`
+              ? `Coba pilih alat ${toolName} di sebelah kiri dulu ya!`
+              : `Try selecting the ${toolName} tool on the left first!`
           );
+          return;
+        }
+
+        if (lesson.requiredBrushSize && brushSize !== lesson.requiredBrushSize) {
+          const sizeLabel = isId
+            ? BRUSH_SIZES[lesson.requiredBrushSize].labelId
+            : BRUSH_SIZES[lesson.requiredBrushSize].labelEn;
+          setBuddyMood('hint');
+          playHintSound(soundEnabled);
+          setFeedbackMsg(
+            isId
+              ? `Pilih ukuran kuas ${sizeLabel} (titik terbesar) di panel kiri!`
+              : `Pick the ${sizeLabel} brush size dot on the left!`
+          );
+          return;
+        }
+
+        if (
+          lesson.requiredColorId &&
+          (isRainbowMode || activeColorId !== lesson.requiredColorId)
+        ) {
+          const targetSwatch = PAINT_COLORS.find((c) => c.id === lesson.requiredColorId);
+          const colorName = targetSwatch
+            ? isId
+              ? targetSwatch.nameId
+              : targetSwatch.nameEn
+            : '';
+          setBuddyMood('hint');
+          playHintSound(soundEnabled);
+          setFeedbackMsg(
+            isId
+              ? `Pilih warna ${colorName} di palet bawah dulu ya!`
+              : `Pick the ${colorName} color from the palette below!`
+          );
+          return;
+        }
+
+        let passed = false;
+
+        if (lesson.verifyType === 'paint_target_zone') {
+          const hits = lesson.samplePoints.filter((pt) =>
+            isPixelNearColor(ctx, pt.x, pt.y, '#EF4444', 85)
+          ).length;
+          passed = hits >= 2;
+        } else if (lesson.verifyType === 'trace_path') {
+          const hits = lesson.samplePoints.filter((pt) => isPixelNotWhite(ctx, pt.x, pt.y)).length;
+          passed = hits >= 2;
+        } else if (lesson.verifyType === 'brush_large_zone') {
+          const hits = lesson.samplePoints.filter((pt) =>
+            isPixelNearColor(ctx, pt.x, pt.y, '#2563EB', 85)
+          ).length;
+          passed = hits >= 2;
+        } else if (lesson.verifyType === 'bucket_fill_region') {
+          const hits = lesson.samplePoints.filter((pt) =>
+            isPixelNearColor(ctx, pt.x, pt.y, '#FACC15', 85)
+          ).length;
+          passed = hits >= 2;
+        } else if (lesson.verifyType === 'erase_smudge') {
+          passed = lesson.samplePoints.every((pt) => isPixelCleanWhite(ctx, pt.x, pt.y));
+        } else if (lesson.verifyType === 'place_shape' || lesson.verifyType === 'place_stamp') {
+          passed = true;
+        }
+
+        if (passed) {
+          setFeedbackMsg(null);
+          setBuddyMood('happy');
+          if (actionPoint) {
+            spawnBurst(actionPoint.x, actionPoint.y, ['#FACC15', '#22C55E', '#38BDF8', '#EC4899'], 22, 1.2);
+          } else {
+            spawnBurst(400, 260, ['#FACC15', '#22C55E', '#38BDF8', '#EC4899'], 22, 1.2);
+          }
+
+          if (!completedLearnIds.includes(lesson.id)) {
+            setCompletedLearnIds((prev) => [...prev, lesson.id]);
+            onEarnStars(1);
+          }
+
+          if (learnIndex < LEARN_LESSONS.length - 1) {
+            playStepSuccessSound(soundEnabled);
+            const successText = isId ? 'Hebat sekali! Lanjut yuk!' : 'Awesome job! Next step!';
+            setFeedbackMsg(successText);
+            setTimeout(() => {
+              setLearnIndex((idx) => Math.min(LEARN_LESSONS.length - 1, idx + 1));
+            }, 900);
+          } else {
+            playVictoryFanfare(soundEnabled);
+            spawnConfettiShower();
+            setCelebration({
+              title: isId ? 'Pintar! Semua Alat Dikuasai!' : 'Awesome! All Tools Mastered!',
+              subtitle: isId
+                ? 'Kamu sudah bisa memilih warna, memakai Pensil, Kuas, Ember Cat, Penghapus, Bentuk, dan Stiker!'
+                : 'You mastered Color Tools, Pencil, Brush, Fill Bucket, Eraser, Shapes, and Stickers!',
+              stars: LEARN_LESSONS.length,
+              maxStars: LEARN_LESSONS.length,
+              previewUrl: canvas.toDataURL('image/png'),
+            });
+          }
+        }
+      } else if (mode === 'GUIDED_PAINT') {
+        const step = currentMissionStep;
+        const targetSwatch = PAINT_COLORS.find((c) => c.id === step.targetColorId);
+        if (!targetSwatch) return;
+
+        const allColored = step.samplePoints.every((pt) =>
+          isPixelNearColor(ctx, pt.x, pt.y, targetSwatch.hex, 90)
+        );
+
+        if (allColored) {
+          setFeedbackMsg(null);
+          setBuddyMood('happy');
+          spawnBurst(
+            step.guidePoint.x,
+            step.guidePoint.y,
+            [targetSwatch.hex, '#FACC15', '#FFFFFF'],
+            20,
+            1.15
+          );
+
+          if (missionStepIndex < currentMission.steps.length - 1) {
+            playStepSuccessSound(soundEnabled);
+            setFeedbackMsg(
+              isId ? 'Bagus sekali! Lanjut bagian berikutnya...' : 'Nice! Moving to next part...'
+            );
+            setTimeout(() => {
+              setMissionStepIndex((idx) => Math.min(currentMission.steps.length - 1, idx + 1));
+            }, 750);
+          } else {
+            playVictoryFanfare(soundEnabled);
+            spawnConfettiShower();
+            onEarnStars(3);
+            setCelebration({
+              title: isId
+                ? `Karya "${currentMission.titleId}" Selesai!`
+                : `"${currentMission.titleEn}" Complete!`,
+              subtitle: isId
+                ? 'Warna-warnanya rapi dan cerah sekali!'
+                : 'Your picture looks bright and wonderful!',
+              stars: 3,
+              maxStars: 3,
+              previewUrl: canvas.toDataURL('image/png'),
+            });
+          }
+        } else {
+          const anyNonWhite = step.samplePoints.some((pt) => isPixelNotWhite(ctx, pt.x, pt.y));
+          if (anyNonWhite && (isRainbowMode || activeColorId !== step.targetColorId)) {
+            const colorName = isId ? targetSwatch.nameId : targetSwatch.nameEn;
+            const partName = isId ? step.partNameId : step.partNameEn;
+            setBuddyMood('hint');
+            playHintSound(soundEnabled);
+            setFeedbackMsg(
+              isId
+                ? `Untuk ${partName}, coba pakai warna ${colorName} ya!`
+                : `For ${partName}, try using ${colorName}!`
+            );
+          }
         }
       }
-    }
-  }, [
-    activeColorId,
-    activeTool,
-    brushSize,
-    completedLearnIds,
-    currentLearnLesson,
-    currentMission,
-    currentMissionStep,
-    isId,
-    learnIndex,
-    missionStepIndex,
-    mode,
-    onEarnStars,
-    soundEnabled,
-  ]);
+    },
+    [
+      activeColorId,
+      activeTool,
+      brushSize,
+      completedLearnIds,
+      currentLearnLesson,
+      currentMission,
+      currentMissionStep,
+      isId,
+      isRainbowMode,
+      learnIndex,
+      missionStepIndex,
+      mode,
+      onEarnStars,
+      soundEnabled,
+      spawnBurst,
+      spawnConfettiShower,
+    ]
+  );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -496,17 +701,21 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     e.currentTarget.setPointerCapture(e.pointerId);
     const pt = getCanvasPoint(e);
     setFeedbackMsg(null);
+    setBuddyMood('painting');
 
     if (activeTool === 'bucket') {
       pushUndoSnapshot();
-      const filled = scanlineFloodFill(ctx, pt.x, pt.y, currentHex);
+      const fillColor = isRainbowMode ? '#EC4899' : currentHex;
+      const filled = scanlineFloodFill(ctx, pt.x, pt.y, fillColor);
       if (filled > 0) {
         playBucketSound(soundEnabled);
-        verifyCurrentProgress();
+        spawnBurst(pt.x, pt.y, [fillColor, '#FACC15', '#38BDF8'], 14, 1);
+        verifyCurrentProgress(pt);
       } else {
-        // Undo empty snapshot if click didn't fill
         undoStackRef.current.pop();
         setUndoCount(undoStackRef.current.length);
+        setBuddyMood('hint');
+        playHintSound(soundEnabled);
         setFeedbackMsg(
           isId
             ? 'Klik di dalam area putihnya ya, bukan tepat di garis hitam.'
@@ -516,24 +725,36 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
       return;
     }
 
+    if (activeTool === 'stamp') {
+      pushUndoSnapshot();
+      const stampScale = brushSize === 'small' ? 0.8 : brushSize === 'medium' ? 1.05 : 1.35;
+      drawStamp(ctx, activeStamp, pt.x, pt.y, stampScale);
+      playStampSound(soundEnabled);
+      spawnBurst(pt.x, pt.y, ['#FACC15', '#EC4899', '#38BDF8', '#22C55E'], 16, 1.1);
+      verifyCurrentProgress(pt);
+      setTimeout(() => setBuddyMood('idle'), 500);
+      return;
+    }
+
     pushUndoSnapshot();
     isDrawingRef.current = true;
     lastPointRef.current = pt;
 
     if (activeTool === 'shape') {
       shapeStartRef.current = pt;
+      shapePreviewEndRef.current = pt;
       return;
     }
 
     if (activeTool === 'spray') {
       paintSprayAt(ctx, pt);
+      playSoftPaintTick(soundEnabled, 3);
       return;
     }
 
-    // Pencil, Brush, or Eraser dot on initial press
     ctx.save();
     ctx.beginPath();
-    const strokeColor = activeTool === 'eraser' ? '#FFFFFF' : currentHex;
+    const strokeColor = activeTool === 'eraser' ? '#FFFFFF' : getStrokeHex(true);
     const width =
       activeTool === 'pencil'
         ? brushSize === 'small'
@@ -549,6 +770,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     ctx.arc(pt.x, pt.y, width / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+    playSoftPaintTick(soundEnabled, 0);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -561,28 +783,19 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     const pt = getCanvasPoint(e);
 
     if (activeTool === 'shape' && shapeStartRef.current) {
-      const overlay = overlayCanvasRef.current;
-      if (overlay) {
-        const octx = overlay.getContext('2d');
-        if (octx) {
-          octx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-          octx.save();
-          octx.globalAlpha = 0.72;
-          drawShape(octx, activeShape, shapeStartRef.current, pt, currentHex, 3);
-          octx.restore();
-        }
-      }
+      shapePreviewEndRef.current = pt;
       return;
     }
 
     if (activeTool === 'spray') {
       paintSprayAt(ctx, pt);
       lastPointRef.current = pt;
+      playSoftPaintTick(soundEnabled, Math.floor(pt.x / 40));
       return;
     }
 
     const prev = lastPointRef.current || pt;
-    const strokeColor = activeTool === 'eraser' ? '#FFFFFF' : currentHex;
+    const strokeColor = activeTool === 'eraser' ? '#FFFFFF' : getStrokeHex(true);
     const width =
       activeTool === 'pencil'
         ? brushSize === 'small'
@@ -605,6 +818,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     ctx.stroke();
     ctx.restore();
 
+    playSoftPaintTick(soundEnabled, Math.floor((pt.x + pt.y) / 50));
     lastPointRef.current = pt;
   };
 
@@ -617,16 +831,20 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
+    const pt = getCanvasPoint(e);
+
     if (activeTool === 'shape' && shapeStartRef.current) {
-      const pt = getCanvasPoint(e);
-      drawShape(ctx, activeShape, shapeStartRef.current, pt, currentHex, 3);
+      const shapeColor = getStrokeHex(true);
+      drawShape(ctx, activeShape, shapeStartRef.current, pt, shapeColor, 3);
       shapeStartRef.current = null;
-      drawGuideOverlay();
-      playPopSound(soundEnabled);
+      shapePreviewEndRef.current = null;
+      playStampSound(soundEnabled);
+      spawnBurst(pt.x, pt.y, [shapeColor, '#FACC15'], 14, 1);
     }
 
     lastPointRef.current = null;
-    verifyCurrentProgress();
+    setBuddyMood('idle');
+    verifyCurrentProgress(pt);
   };
 
   const handleDownloadPng = () => {
@@ -641,16 +859,48 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
   };
 
   const handleSelectColor = (colorId: string) => {
+    setIsRainbowMode(false);
     setCustomMixColor(null);
     setActiveColorId(colorId);
     setFeedbackMsg(null);
     playPopSound(soundEnabled);
   };
 
+  const handleSelectRainbow = () => {
+    setIsRainbowMode(true);
+    setCustomMixColor(null);
+    setFeedbackMsg(null);
+    if (activeTool === 'bucket' || activeTool === 'eraser') {
+      setActiveTool('brush');
+    }
+    playMixSwirlSound(soundEnabled);
+  };
+
   const handleSelectTool = (tool: PaintTool) => {
     setActiveTool(tool);
     setFeedbackMsg(null);
     playPopSound(soundEnabled);
+  };
+
+  const handleStirMixColors = () => {
+    setIsStirring(true);
+    playMixSwirlSound(soundEnabled);
+    const result = mixTwoColors(mixSlotA, mixSlotB);
+
+    setTimeout(() => {
+      setIsStirring(false);
+      setIsRainbowMode(false);
+      setCustomMixColor({
+        hex: result.hex,
+        nameId: result.nameId,
+        nameEn: result.nameEn,
+      });
+      const mixText = isId
+        ? `Ajaib! Jadi warna ${result.nameId}!`
+        : `Magic! You made ${result.nameEn}!`;
+      setLastMixBanner(mixText);
+      speakInstruction(mixText, language, soundEnabled);
+    }, 450);
   };
 
   const handleClearCanvas = () => {
@@ -685,20 +935,21 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
       ? currentMissionStep.targetColorId
       : null;
 
+  const mixColorA = PAINT_COLORS.find((c) => c.id === mixSlotA) || PAINT_COLORS[0];
+  const mixColorB = PAINT_COLORS.find((c) => c.id === mixSlotB) || PAINT_COLORS[2];
+  const liveMixPreview = mixTwoColors(mixSlotA, mixSlotB);
+
   return (
     <main className="max-w-[1360px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
-      {/* Studio Sub-Toolbar: Mode Context + Audio / Language Switches */}
+      {/* Studio Sub-Toolbar with Interactive Bobi Bear Mascot */}
       <div className="bg-white border border-slate-200 rounded-2xl px-4 sm:px-5 py-3.5 mb-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-          <button
-            type="button"
+        <div className="flex items-center gap-3.5 min-w-0 flex-1">
+          <BuddyMascot
+            mood={buddyMood}
+            beretColor={currentHex}
             onClick={handleSpeakCurrent}
-            className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-            title={isId ? 'Dengarkan instruksi' : 'Listen to instruction'}
-            aria-label={isId ? 'Dengarkan instruksi' : 'Listen to instruction'}
-          >
-            <Volume2 className="w-5 h-5" />
-          </button>
+            title={isId ? 'Klik Bobi untuk dengar perintah' : 'Tap Bobi to hear instructions'}
+          />
 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
@@ -709,7 +960,9 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
                   </span>
                   <span aria-hidden="true">·</span>
                   <span className="tabular-nums">
-                    {isId ? `Langkah ${learnIndex + 1} / ${LEARN_LESSONS.length}` : `Step ${learnIndex + 1} / ${LEARN_LESSONS.length}`}
+                    {isId
+                      ? `Langkah ${learnIndex + 1} / ${LEARN_LESSONS.length}`
+                      : `Step ${learnIndex + 1} / ${LEARN_LESSONS.length}`}
                   </span>
                   <span aria-hidden="true">·</span>
                   <span>{isId ? currentLearnLesson.titleId : currentLearnLesson.titleEn}</span>
@@ -736,18 +989,29 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
                     {isId ? 'Studio Kanvas Bebas' : 'Free Paint Studio'}
                   </span>
                   <span aria-hidden="true">·</span>
-                  <span>{isId ? 'Berkreasi tanpa batas' : 'Create anything you imagine'}</span>
+                  <span>{isId ? 'Klik Bobi kapan saja!' : 'Tap Bobi anytime!'}</span>
                 </>
               )}
             </div>
 
-            <p className="font-display text-base sm:text-lg font-bold text-slate-900 leading-snug mt-0.5">
-              {currentPromptText}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="font-display text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                {currentPromptText}
+              </p>
+              <button
+                type="button"
+                onClick={handleSpeakCurrent}
+                className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 cursor-pointer shrink-0"
+                title={isId ? 'Bacakan perintah' : 'Read aloud'}
+                aria-label={isId ? 'Bacakan perintah' : 'Read aloud'}
+              >
+                <Volume2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right Workspace Controls: Step Skip/Selector + Sound + Language */}
+        {/* Right Workspace Controls: Step Selector + Sound + Language */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {mode === 'LEARN_TOOLS' && (
             <div className="flex items-center gap-1 mr-1" aria-label="Lesson steps">
@@ -798,7 +1062,11 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 cursor-pointer whitespace-nowrap shrink-0"
             title={soundEnabled ? (isId ? 'Suara Aktif' : 'Sound On') : isId ? 'Suara Mati' : 'Sound Off'}
           >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-blue-600" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-blue-600" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-slate-400" />
+            )}
             <span>{isId ? 'Suara' : 'Sound'}</span>
           </button>
 
@@ -825,7 +1093,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Mission / Template Picker Strip for Guided Paint or Free Studio */}
+      {/* Mission / Template Picker Strip */}
       {mode === 'GUIDED_PAINT' && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
@@ -893,7 +1161,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Main Studio Grid: Left Tools + Center Canvas + Bottom Palette */}
+      {/* Main Studio Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left Tool Dock */}
         <aside
@@ -904,7 +1172,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
             <p className="text-xs font-bold text-slate-500 mb-2.5">
               {isId ? 'Pilih Alat Paint' : 'Paint Tools'}
             </p>
-            <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-2 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-7 lg:grid-cols-2 gap-2">
               {TOOL_LIST.map((tool) => {
                 const isActive = activeTool === tool;
                 const isRecommended = recommendedTool === tool && !isActive;
@@ -917,10 +1185,10 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
                     onClick={() => handleSelectTool(tool)}
                     className={`relative flex flex-col items-center justify-center gap-1 min-h-[64px] p-2 rounded-xl border-2 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
                       isActive
-                        ? 'bg-blue-50 border-blue-600 text-blue-900 shadow-xs'
+                        ? 'bg-blue-50 border-blue-600 text-blue-900 shadow-xs scale-[1.02]'
                         : isRecommended
                         ? 'bg-amber-50/70 border-amber-400 text-slate-900 hover:bg-amber-50'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 active:scale-95'
                     }`}
                   >
                     <ToolIllustration tool={tool} colorHex={currentHex} className="w-7 h-7" />
@@ -933,7 +1201,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Shape Sub-Picker when Shape tool is selected */}
+          {/* Shape Sub-Picker */}
           {activeTool === 'shape' && (
             <div className="pt-3 border-t border-slate-200">
               <p className="text-xs font-bold text-slate-500 mb-2">
@@ -967,11 +1235,49 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
             </div>
           )}
 
-          {/* Brush Size Picker */}
+          {/* Sticker Stamp Sub-Picker */}
+          {activeTool === 'stamp' && (
+            <div className="pt-3 border-t border-slate-200">
+              <p className="text-xs font-bold text-slate-500 mb-2">
+                {isId ? 'Pilih Stiker Lucu' : 'Pick a Sticker'}
+              </p>
+              <div className="grid grid-cols-3 lg:grid-cols-2 gap-1.5">
+                {STAMP_LIST.map((stp) => {
+                  const active = activeStamp === stp.id;
+                  return (
+                    <button
+                      key={stp.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveStamp(stp.id);
+                        playPopSound(soundEnabled);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-pink-50 border-pink-500 text-pink-900'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <StampIcon stamp={stp.id} className="w-5 h-5" />
+                      <span className="truncate">{isId ? stp.labelId : stp.labelEn}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Brush / Stamp Size Picker */}
           {activeTool !== 'bucket' && activeTool !== 'shape' && (
             <div className="pt-3 border-t border-slate-200">
               <p className="text-xs font-bold text-slate-500 mb-2">
-                {isId ? 'Ukuran Kuas' : 'Tool Size'}
+                {activeTool === 'stamp'
+                  ? isId
+                    ? 'Ukuran Stiker'
+                    : 'Sticker Size'
+                  : isId
+                  ? 'Ukuran Kuas'
+                  : 'Tool Size'}
               </p>
               <div className="grid grid-cols-3 gap-1.5">
                 {(['small', 'medium', 'large'] as BrushSizeKey[]).map((sz) => {
@@ -1011,7 +1317,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
             </div>
           )}
 
-          {/* Canvas Actions: Undo, Reset, Save */}
+          {/* Canvas Actions */}
           <div className="pt-3 border-t border-slate-200 grid grid-cols-3 lg:grid-cols-1 gap-2">
             <button
               type="button"
@@ -1029,7 +1335,9 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
               className="inline-flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer transition-colors"
             >
               {mode === 'FREE_STUDIO' ? <Trash2 className="w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
-              <span>{mode === 'FREE_STUDIO' ? (isId ? 'Bersihkan' : 'Clear') : isId ? 'Ulangi' : 'Reset'}</span>
+              <span>
+                {mode === 'FREE_STUDIO' ? (isId ? 'Bersihkan' : 'Clear') : isId ? 'Ulangi' : 'Reset'}
+              </span>
             </button>
 
             <button
@@ -1045,7 +1353,6 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
 
         {/* Center Drawing Stage + Bottom Color Palette */}
         <section className="lg:col-span-9 xl:col-span-10 flex flex-col gap-4">
-          {/* Optional Friendly Guidance Feedback Banner */}
           {feedbackMsg && (
             <div
               className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-amber-900 flex items-center justify-between gap-3"
@@ -1093,7 +1400,14 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
               <div className="flex items-center gap-3">
                 <span
                   className="w-8 h-8 rounded-lg border border-slate-300 shrink-0"
-                  style={{ backgroundColor: currentHex }}
+                  style={
+                    isRainbowMode
+                      ? {
+                          background:
+                            'linear-gradient(135deg, #EF4444, #FACC15, #22C55E, #38BDF8, #9333EA)',
+                        }
+                      : { backgroundColor: currentHex }
+                  }
                   aria-hidden="true"
                 />
                 <div className="text-sm">
@@ -1102,14 +1416,33 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowColorMixer((prev) => !prev)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors whitespace-nowrap shrink-0"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{isId ? 'Belajar Campur Warna' : 'Color Mixing Lab'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectRainbow}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                    isRainbowMode
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isId ? 'Kuas Pelangi' : 'Rainbow Paint'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowColorMixer((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+                    showColorMixer
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  <FlaskConical className="w-3.5 h-3.5" />
+                  <span>{isId ? 'Mangkuk Campur Warna' : 'Color Mixing Bowl'}</span>
+                </button>
+              </div>
             </div>
 
             {/* 12 Big Kindergarten Color Pots */}
@@ -1119,7 +1452,7 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
               aria-label={isId ? 'Palet Warna' : 'Color Palette'}
             >
               {PAINT_COLORS.map((swatch) => {
-                const isSelected = !customMixColor && activeColorId === swatch.id;
+                const isSelected = !isRainbowMode && !customMixColor && activeColorId === swatch.id;
                 const isSuggested = recommendedColorId === swatch.id && !isSelected;
 
                 return (
@@ -1150,54 +1483,101 @@ export const PaintWorkspace: React.FC<PaintWorkspaceProps> = ({
               })}
             </div>
 
-            {/* Interactive Color Mixing Discovery Strip */}
+            {/* Interactive 2-Pot Color Mixing Bowl */}
             {showColorMixer && (
-              <div className="mt-4 pt-3 border-t border-slate-200">
-                <p className="text-xs font-bold text-slate-600 mb-2">
-                  {isId
-                    ? 'Klik hasil campuran di bawah untuk langsung mencobanya di kuasmu:'
-                    : 'Tap any mixed color below to load it onto your brush:'}
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                  {COLOR_MIX_RECIPES.map((recipe) => {
-                    const cA = PAINT_COLORS.find((c) => c.id === recipe.colorAId)!;
-                    const cB = PAINT_COLORS.find((c) => c.id === recipe.colorBId)!;
-                    return (
-                      <button
-                        key={recipe.id}
-                        type="button"
-                        onClick={() => {
-                          setCustomMixColor({
-                            hex: recipe.resultHex,
-                            nameId: recipe.resultNameId,
-                            nameEn: recipe.resultNameEn,
-                          });
-                          playPopSound(soundEnabled);
-                        }}
-                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer text-xs font-semibold text-slate-800 transition-colors"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <span
-                            className="w-4 h-4 rounded-full border border-slate-300"
-                            style={{ backgroundColor: cA.hex }}
-                          />
-                          <span>+</span>
-                          <span
-                            className="w-4 h-4 rounded-full border border-slate-300"
-                            style={{ backgroundColor: cB.hex }}
-                          />
-                          <span>=</span>
-                        </span>
-                        <span className="flex items-center gap-1.5 font-bold">
-                          <span
-                            className="w-5 h-5 rounded-md border border-slate-300"
-                            style={{ backgroundColor: recipe.resultHex }}
-                          />
-                          <span>{isId ? recipe.resultNameId : recipe.resultNameEn}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <p className="text-xs sm:text-sm font-bold text-slate-800">
+                    {isId
+                      ? 'Pilih 2 warna lalu tekan Aduk untuk membuat warna baru!'
+                      : 'Pick 2 colors and tap Stir to discover a new color!'}
+                  </p>
+                  {lastMixBanner && (
+                    <span className="text-xs font-bold text-emerald-700">{lastMixBanner}</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4">
+                  {/* Pot 1 selector */}
+                  <div className="md:col-span-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-1.5">
+                      {isId ? '1. Warna Pertama' : '1. First Color'}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PAINT_COLORS.slice(0, 8).map((c) => (
+                        <button
+                          key={`mixA-${c.id}`}
+                          type="button"
+                          onClick={() => {
+                            setMixSlotA(c.id);
+                            playPopSound(soundEnabled);
+                          }}
+                          className={`w-7 h-7 rounded-lg border-2 cursor-pointer transition-transform ${
+                            mixSlotA === c.id ? 'border-slate-900 scale-110' : 'border-slate-300'
+                          }`}
+                          style={{ backgroundColor: c.hex }}
+                          title={isId ? c.nameId : c.nameEn}
+                          aria-label={isId ? c.nameId : c.nameEn}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pot 2 selector */}
+                  <div className="md:col-span-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-1.5">
+                      {isId ? '2. Warna Kedua' : '2. Second Color'}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PAINT_COLORS.filter((c) => c.id !== 'black' && c.id !== 'gray').slice(0, 8).map((c) => (
+                        <button
+                          key={`mixB-${c.id}`}
+                          type="button"
+                          onClick={() => {
+                            setMixSlotB(c.id);
+                            playPopSound(soundEnabled);
+                          }}
+                          className={`w-7 h-7 rounded-lg border-2 cursor-pointer transition-transform ${
+                            mixSlotB === c.id ? 'border-slate-900 scale-110' : 'border-slate-300'
+                          }`}
+                          style={{ backgroundColor: c.hex }}
+                          title={isId ? c.nameId : c.nameEn}
+                          aria-label={isId ? c.nameId : c.nameEn}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Stir Action & Result */}
+                  <div className="md:col-span-4 flex items-center justify-between md:justify-end gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="w-7 h-7 rounded-full border border-slate-300"
+                        style={{ backgroundColor: mixColorA.hex }}
+                      />
+                      <span className="font-bold text-slate-500">+</span>
+                      <span
+                        className="w-7 h-7 rounded-full border border-slate-300"
+                        style={{ backgroundColor: mixColorB.hex }}
+                      />
+                      <span className="font-bold text-slate-500">=</span>
+                      <span
+                        className={`w-9 h-9 rounded-xl border-2 border-slate-800 transition-transform ${
+                          isStirring ? 'rotate-180 scale-110' : ''
+                        }`}
+                        style={{ backgroundColor: liveMixPreview.hex }}
+                        title={isId ? liveMixPreview.nameId : liveMixPreview.nameEn}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleStirMixColors}
+                      className="px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      {isId ? 'Aduk Warna!' : 'Stir & Use!'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

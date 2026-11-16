@@ -1,4 +1,11 @@
-import { BrushSizeKey, ColorSwatch, GuidedMission, LearnLesson, PaintTool } from '../types/paint';
+import {
+  BrushSizeKey,
+  ColorSwatch,
+  GuidedMission,
+  LearnLesson,
+  PaintTool,
+  StampType,
+} from '../types/paint';
 
 export const PAINT_COLORS: ColorSwatch[] = [
   { id: 'red', hex: '#EF4444', nameId: 'Merah', nameEn: 'Red' },
@@ -61,51 +68,67 @@ export const TOOL_META: Record<
     descId: 'Membuat lingkaran, kotak, segitiga, atau bintang.',
     descEn: 'Stamp or drag circles, squares, triangles, or stars.',
   },
+  stamp: {
+    labelId: 'Stiker',
+    labelEn: 'Stickers',
+    descId: 'Menempel stiker lucu seperti bunga, matahari, dan pelangi.',
+    descEn: 'Stamp cute stickers like sun, flower, and rainbow.',
+  },
 };
 
-export interface ColorMixRecipe {
-  id: string;
-  colorAId: string;
-  colorBId: string;
-  resultHex: string;
-  resultNameId: string;
-  resultNameEn: string;
+export const STAMP_LIST: { id: StampType; labelId: string; labelEn: string }[] = [
+  { id: 'flower', labelId: 'Bunga', labelEn: 'Flower' },
+  { id: 'sun', labelId: 'Matahari', labelEn: 'Sun' },
+  { id: 'rainbow', labelId: 'Pelangi', labelEn: 'Rainbow' },
+  { id: 'heart', labelId: 'Hati', labelEn: 'Heart' },
+  { id: 'cloud', labelId: 'Awan', labelEn: 'Cloud' },
+  { id: 'butterfly', labelId: 'Kupu', labelEn: 'Butterfly' },
+];
+
+export interface MixResult {
+  hex: string;
+  nameId: string;
+  nameEn: string;
 }
 
-export const COLOR_MIX_RECIPES: ColorMixRecipe[] = [
-  {
-    id: 'orange-mix',
-    colorAId: 'red',
-    colorBId: 'yellow',
-    resultHex: '#F97316',
-    resultNameId: 'Jingga',
-    resultNameEn: 'Orange',
-  },
-  {
-    id: 'green-mix',
-    colorAId: 'blue',
-    colorBId: 'yellow',
-    resultHex: '#22C55E',
-    resultNameId: 'Hijau',
-    resultNameEn: 'Green',
-  },
-  {
-    id: 'purple-mix',
-    colorAId: 'red',
-    colorBId: 'blue',
-    resultHex: '#9333EA',
-    resultNameId: 'Ungu',
-    resultNameEn: 'Purple',
-  },
-  {
-    id: 'pink-mix',
-    colorAId: 'red',
-    colorBId: 'white',
-    resultHex: '#F472B6',
-    resultNameId: 'Merah Muda',
-    resultNameEn: 'Pink',
-  },
-];
+export function mixTwoColors(colorAId: string, colorBId: string): MixResult {
+  const pair = [colorAId, colorBId].sort().join('+');
+  const map: Record<string, MixResult> = {
+    'red+yellow': { hex: '#F97316', nameId: 'Jingga (Oranye)', nameEn: 'Orange' },
+    'blue+yellow': { hex: '#22C55E', nameId: 'Hijau Cerah', nameEn: 'Bright Green' },
+    'sky+yellow': { hex: '#4ADE80', nameId: 'Hijau Muda', nameEn: 'Mint Green' },
+    'blue+red': { hex: '#9333EA', nameId: 'Ungu', nameEn: 'Purple' },
+    'red+sky': { hex: '#A855F7', nameId: 'Ungu Lavender', nameEn: 'Lavender Purple' },
+    'red+white': { hex: '#F472B6', nameId: 'Merah Muda', nameEn: 'Pink' },
+    'blue+white': { hex: '#38BDF8', nameId: 'Biru Langit', nameEn: 'Sky Blue' },
+    'green+yellow': { hex: '#84CC16', nameId: 'Hijau Lemon', nameEn: 'Lime Green' },
+    'black+white': { hex: '#94A3B8', nameId: 'Abu-Abu', nameEn: 'Gray' },
+    'green+red': { hex: '#92400E', nameId: 'Cokelat', nameEn: 'Brown' },
+    'orange+purple': { hex: '#9A3412', nameId: 'Cokelat Hangat', nameEn: 'Warm Brown' },
+    'pink+yellow': { hex: '#FB7185', nameId: 'Koral Cerah', nameEn: 'Coral Pink' },
+  };
+
+  if (map[pair]) return map[pair];
+  if (colorAId === colorBId) {
+    const same = PAINT_COLORS.find((c) => c.id === colorAId) || PAINT_COLORS[0];
+    return { hex: same.hex, nameId: same.nameId, nameEn: same.nameEn };
+  }
+
+  // Fallback true RGB midpoint blend for any combination
+  const cA = PAINT_COLORS.find((c) => c.id === colorAId) || PAINT_COLORS[0];
+  const cB = PAINT_COLORS.find((c) => c.id === colorBId) || PAINT_COLORS[2];
+  const nA = parseInt(cA.hex.slice(1), 16);
+  const nB = parseInt(cB.hex.slice(1), 16);
+  const r = Math.round((((nA >> 16) & 255) + ((nB >> 16) & 255)) / 2);
+  const g = Math.round((((nA >> 8) & 255) + ((nB >> 8) & 255)) / 2);
+  const b = Math.round(((nA & 255) + (nB & 255)) / 2);
+  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+  return {
+    hex,
+    nameId: `${cA.nameId} + ${cB.nameId}`,
+    nameEn: `${cA.nameEn} + ${cB.nameEn}`,
+  };
+}
 
 export const LEARN_LESSONS: LearnLesson[] = [
   {
@@ -115,7 +138,7 @@ export const LEARN_LESSONS: LearnLesson[] = [
     titleEn: 'Pick a Color Tool',
     instructionId: 'Klik warna Merah di palet bawah, lalu warnai buah apel di tengah!',
     instructionEn: 'Click Red in the palette below, then paint inside the apple!',
-    hintId: 'Ketuk kotak warna Merah (#EF4444) lalu geser di dalam apel.',
+    hintId: 'Ketuk kotak warna Merah lalu geser di dalam apel.',
     hintEn: 'Tap the Red color pot and paint inside the apple outline.',
     requiredTool: 'brush',
     requiredColorId: 'red',
@@ -253,6 +276,26 @@ export const LEARN_LESSONS: LearnLesson[] = [
     },
     verifyType: 'place_shape',
     samplePoints: [{ x: 400, y: 260 }],
+  },
+  {
+    id: 'lesson-stamps',
+    stepNumber: 7,
+    titleId: 'Tempel Stiker Lucu',
+    titleEn: 'Stick Cute Stickers',
+    instructionId: 'Pilih alat Stiker di sebelah kiri, lalu klik di taman untuk menempel stiker!',
+    instructionEn: 'Select the Stickers tool on the left, then click the garden to stamp one!',
+    hintId: 'Kamu bisa memilih stiker Bunga, Matahari, Pelangi, atau Hati.',
+    hintEn: 'Pick Flower, Sun, Rainbow, or Heart and tap the canvas.',
+    requiredTool: 'stamp',
+    guideTarget: {
+      x: 400,
+      y: 290,
+      radius: 95,
+      labelId: 'Tempel Stiker',
+      labelEn: 'Place Sticker',
+    },
+    verifyType: 'place_stamp',
+    samplePoints: [{ x: 400, y: 290 }],
   },
 ];
 

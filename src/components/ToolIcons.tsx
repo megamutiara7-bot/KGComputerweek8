@@ -1,5 +1,5 @@
 import React from 'react';
-import { PaintTool, ShapeType } from '../types/paint';
+import { PaintTool, ShapeType, StampType } from '../types/paint';
 
 interface ToolIconProps {
   tool: PaintTool;
@@ -113,14 +113,7 @@ export const ToolIllustration: React.FC<ToolIconProps> = ({
     case 'shape':
       return (
         <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
-          <circle
-            cx="13"
-            cy="14"
-            r="6.5"
-            fill="#38BDF8"
-            stroke="#1E293B"
-            strokeWidth="2.2"
-          />
+          <circle cx="13" cy="14" r="6.5" fill="#38BDF8" stroke="#1E293B" strokeWidth="2.2" />
           <rect
             x="17"
             y="17"
@@ -131,6 +124,19 @@ export const ToolIllustration: React.FC<ToolIconProps> = ({
             stroke="#1E293B"
             strokeWidth="2.2"
           />
+        </svg>
+      );
+    case 'stamp':
+      return (
+        <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+          <path
+            d="M18 5l3.6 7.4 8.2 1.2-5.9 5.7 1.4 8.1L18 23.6l-7.3 3.8 1.4-8.1-5.9-5.7 8.2-1.2L18 5Z"
+            fill="#EC4899"
+            stroke="#1E293B"
+            strokeWidth="2.2"
+            strokeLinejoin="round"
+          />
+          <circle cx="18" cy="17.5" r="3" fill="#FACC15" />
         </svg>
       );
   }
@@ -168,6 +174,77 @@ export const ShapeIcon: React.FC<{ shape: ShapeType; className?: string }> = ({
             strokeWidth="2.2"
             strokeLinejoin="round"
           />
+        </svg>
+      );
+  }
+};
+
+export const StampIcon: React.FC<{ stamp: StampType; className?: string }> = ({
+  stamp,
+  className = 'w-5 h-5',
+}) => {
+  switch (stamp) {
+    case 'flower':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <circle cx="12" cy="6" r="3" fill="#EC4899" />
+          <circle cx="17" cy="9.5" r="3" fill="#F472B6" />
+          <circle cx="16" cy="16" r="3" fill="#EC4899" />
+          <circle cx="8" cy="16" r="3" fill="#F472B6" />
+          <circle cx="7" cy="9.5" r="3" fill="#EC4899" />
+          <circle cx="12" cy="12" r="3.2" fill="#FACC15" />
+        </svg>
+      );
+    case 'sun':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="5.5" fill="#FACC15" stroke="#EA580C" strokeWidth="1.5" />
+          <path
+            d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"
+            stroke="#F97316"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    case 'rainbow':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <path d="M4 17a8 8 0 0 1 16 0" stroke="#EF4444" strokeWidth="2.3" strokeLinecap="round" />
+          <path d="M6.5 17a5.5 5.5 0 0 1 11 0" stroke="#FACC15" strokeWidth="2.3" strokeLinecap="round" />
+          <path d="M9 17a3 3 0 0 1 6 0" stroke="#38BDF8" strokeWidth="2.3" strokeLinecap="round" />
+        </svg>
+      );
+    case 'heart':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <path
+            d="M12 20s-7.5-4.8-7.5-10a4.2 4.2 0 0 1 7.5-2.6A4.2 4.2 0 0 1 19.5 10C19.5 15.2 12 20 12 20Z"
+            fill="#EF4444"
+            stroke="#1E293B"
+            strokeWidth="1.5"
+          />
+        </svg>
+      );
+    case 'cloud':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <path
+            d="M7 18h10.5a3.5 3.5 0 0 0 .4-7 4.8 4.8 0 0 0-9.3-1.2A3.8 3.8 0 0 0 7 18Z"
+            fill="#BAE6FD"
+            stroke="#0284C7"
+            strokeWidth="1.8"
+          />
+        </svg>
+      );
+    case 'butterfly':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+          <ellipse cx="7.5" cy="9.5" rx="4" ry="3.2" fill="#A855F7" />
+          <ellipse cx="16.5" cy="9.5" rx="4" ry="3.2" fill="#A855F7" />
+          <ellipse cx="8.5" cy="14.5" rx="3" ry="2.5" fill="#38BDF8" />
+          <ellipse cx="15.5" cy="14.5" rx="3" ry="2.5" fill="#38BDF8" />
+          <rect x="11.1" y="6.5" width="1.8" height="11" rx="0.9" fill="#1E293B" />
         </svg>
       );
   }

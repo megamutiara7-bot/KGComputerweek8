@@ -9,7 +9,7 @@ interface TeacherGuideViewProps {
   onNavigate: (mode: GameMode) => void;
 }
 
-const TOOL_ORDER: PaintTool[] = ['pencil', 'brush', 'spray', 'bucket', 'eraser', 'shape'];
+const TOOL_ORDER: PaintTool[] = ['pencil', 'brush', 'spray', 'bucket', 'eraser', 'shape', 'stamp'];
 
 export const TeacherGuideView: React.FC<TeacherGuideViewProps> = ({ language, onNavigate }) => {
   const isId = language === 'id';
@@ -46,32 +46,32 @@ export const TeacherGuideView: React.FC<TeacherGuideViewProps> = ({ language, on
           </h2>
           <p className="text-sm text-slate-600 leading-relaxed">
             {isId
-              ? 'Melatih klik kiri (Ember Cat & Palet Warna) serta klik-dan-geser (Pensil, Kuas, Penghapus).'
-              : 'Practices single clicking (Fill Bucket & Color Pots) and click-and-drag coordination (Pencil, Brush, Eraser).'}
+              ? 'Melatih klik kiri (Ember Cat, Stiker, Palet Warna) serta klik-dan-geser (Pensil, Kuas, Penghapus).'
+              : 'Practices single clicking (Fill Bucket, Stickers & Color Pots) and click-and-drag coordination (Pencil, Brush, Eraser).'}
           </p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <Palette className="w-6 h-6 text-emerald-600 mb-3" />
           <h2 className="font-display text-lg font-bold text-slate-900 mb-1">
-            {isId ? 'Mengenal Warna Dasar' : 'Color Recognition'}
+            {isId ? 'Mengenal & Mencampur Warna' : 'Color Recognition & Mixing'}
           </h2>
           <p className="text-sm text-slate-600 leading-relaxed">
             {isId
-              ? 'Anak mencocokkan nama warna (Merah, Kuning, Biru, Hijau) dan mencoba pencampuran warna sederhana.'
-              : 'Helps children identify 12 primary and secondary colors and explore basic color mixing recipes.'}
+              ? 'Anak mencocokkan nama warna, mencoba Kuas Pelangi, dan mengaduk dua warna di Mangkuk Campur Warna.'
+              : 'Children identify 12 colors, try Magic Rainbow paint, and stir two colors together in the Mixing Bowl.'}
           </p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <Volume2 className="w-6 h-6 text-amber-600 mb-3" />
           <h2 className="font-display text-lg font-bold text-slate-900 mb-1">
-            {isId ? 'Panduan Suara Otomatis' : 'Audio Instructions'}
+            {isId ? 'Panduan Suara & Maskot Bobi' : 'Audio & Bobi Bear Buddy'}
           </h2>
           <p className="text-sm text-slate-600 leading-relaxed">
             {isId
-              ? 'Anak yang belum lancar membaca dapat menekan tombol Dengar untuk mendengarkan perintah suara.'
-              : 'Pre-readers can tap the Listen button at any time to hear spoken step instructions.'}
+              ? 'Anak yang belum lancar membaca dapat menekan Bobi si Beruang untuk mendengarkan perintah suara.'
+              : 'Pre-readers can tap Bobi the Bear at any time to hear spoken step instructions.'}
           </p>
         </div>
       </section>
@@ -79,7 +79,7 @@ export const TeacherGuideView: React.FC<TeacherGuideViewProps> = ({ language, on
       {/* Tool Breakdown */}
       <section className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
         <h2 className="font-display text-xl font-bold text-slate-900 mb-6">
-          {isId ? 'Fungsi 6 Alat Utama di Paint' : 'The 6 Essential Paint Tools'}
+          {isId ? 'Fungsi 7 Alat Utama di Paint' : 'The 7 Essential Paint Tools'}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {TOOL_ORDER.map((tool, index) => {

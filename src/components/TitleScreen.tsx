@@ -32,8 +32,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       step: '01',
       title: isId ? 'Kenali Alat Warna & Paint' : 'Learn Color & Paint Tools',
       desc: isId
-        ? '6 langkah seru mencoba Palet Warna, Pensil, Kuas, Ember Cat, Penghapus, dan Bentuk.'
-        : '6 fun steps to try Color Palette, Pencil, Brush, Fill Bucket, Eraser, and Shapes.',
+        ? '7 langkah seru mencoba Palet Warna, Pensil, Kuas, Ember Cat, Penghapus, Bentuk, dan Stiker bersama Bobi.'
+        : '7 fun steps with Bobi to try Color Palette, Pencil, Brush, Fill Bucket, Eraser, Shapes, and Stickers.',
       cta: isId ? 'Mulai Belajar' : 'Start Lesson',
       icon: <Palette className="w-6 h-6 text-blue-600" />,
       accent: 'hover:border-blue-300',
@@ -43,8 +43,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       step: '02',
       title: isId ? 'Misi Mewarnai Gambar' : 'Guided Paint Missions',
       desc: isId
-        ? 'Warnai Rumah Ceria, Kupu-Kupu, Roket, dan Pohon Apel mengikuti petunjuk warna.'
-        : 'Color Sunny House, Butterfly, Rocket, and Apple Tree with step-by-step color clues.',
+        ? 'Warnai Rumah Ceria, Kupu-Kupu, Roket, dan Pohon Apel mengikuti petunjuk warna & efek percikan cat.'
+        : 'Color Sunny House, Butterfly, Rocket, and Apple Tree with step-by-step color clues and splash effects.',
       cta: isId ? 'Pilih Gambar' : 'Pick Picture',
       icon: <CheckCircle2 className="w-6 h-6 text-emerald-600" />,
       accent: 'hover:border-emerald-300',
@@ -54,8 +54,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       step: '03',
       title: isId ? 'Studio Kanvas Bebas' : 'Free Paint Studio',
       desc: isId
-        ? 'Berkreasi bebas menggambar, mencampur warna, menempel bentuk, dan simpan hasil karya.'
-        : 'Draw freely, mix bright colors, stamp shapes, and save your masterpiece as PNG.',
+        ? 'Berkreasi bebas dengan Kuas Pelangi, Mangkuk Campur Warna, Stiker Lucu, dan simpan hasil karya PNG.'
+        : 'Draw freely with Magic Rainbow Paint, Color Mixing Bowl, Cute Stickers, and save as PNG.',
       cta: isId ? 'Buka Kanvas' : 'Open Canvas',
       icon: <Brush className="w-6 h-6 text-amber-600" />,
       accent: 'hover:border-amber-300',
