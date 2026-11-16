@@ -1,0 +1,6 @@
+{
+  "name": "PaintBuddy Kindergarten Studio",
+  "description": "Game edukasi komputer untuk anak TK (Kindergarten) belajar menggunakan alat warna (color tools) dan cara menggunakan Paint secara interaktif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
